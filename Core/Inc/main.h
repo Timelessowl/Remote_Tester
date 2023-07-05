@@ -62,7 +62,6 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 
 /* USER CODE BEGIN Private defines */
-#define MAX_INT32_STR_LENGTH 12  // Maximum length of int32_t string representation (including sign and null-terminator)
 
 typedef enum
 {
@@ -81,7 +80,7 @@ typedef struct
 		struct
 		{
 			uint32_t pressCount;
-			uint8_t str_pressCount[MAX_INT32_STR_LENGTH];
+			uint8_t errorCount;
 		}status;
 	};
 } TESTER_DATA;

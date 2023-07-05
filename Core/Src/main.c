@@ -31,11 +31,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define X_TEXT_BEGIN           10
-#define Y_TEXT_BEGIN           12
-#define X_ICON_BEGIN           102
-#define Y_ICON_BEGIN           8
-#define DEFAULT_PRESS_COUNTER  10000
+#define VERTICAL_LINE_X             110
+#define HORIZONTAL_LINE_Y           18
+#define X_ICON_BEGIN           		112
+#define Y_ICON_BEGIN          		8
+#define DEFAULT_PRESS_COUNTER  		10000
+#define LONG_PRESS_PRESC			50
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,23 +47,30 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
-UART_HandleTypeDef huart1;
-
 /* USER CODE BEGIN PV */
 uint32_t pressCount;
 uint8_t testEngineState;
 TESTER_STATE testerState;
 TESTER_DATA gTesterCurData;
 TESTER_DATA gTesterPrevData;
+
+//RTC_TimeTypeDef sTime = {0};
+//RTC_DateTypeDef DateToUpdate = {0};
+
+char trans_str[64] = {0,};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void clear_text(uint8_t x, uint8_t y, FontDef font);
+void clear_icon(void);
+void setup_label(LABEL *Label, uint8_t x, uint8_t y, char str[]);
+void ssd1306_WriteUint(LABEL *Label, uint32_t val, FontDef font);
+void DrawResetScreen(void);
+//void DrawLinesAndLabels(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -76,36 +84,52 @@ static void MX_USART1_UART_Init(void);
   */
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
+	/* USER CODE BEGIN 1 */
 
-  /* USER CODE END 1 */
+	/* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
+	/* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+	HAL_Init();
 
-  /* USER CODE BEGIN Init */
+	/* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+	/* USER CODE END Init */
 
-  /* Configure the system clock */
-  SystemClock_Config();
+	/* Configure the system clock */
+	SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-  uint8_t waitCounter;
-  uint8_t needToRedrawIcon = 1;
-  gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
-  /* USER CODE END SysInit */
+	/* USER CODE BEGIN SysInit */
+	uint8_t test;   //FIXME
+	uint8_t waitCounter;
+	uint8_t needToRedrawIcon = 1;
+	gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
+	gTesterCurData.status.errorCount = 0;
+	uint8_t LongPressCount = 0;
+	uint8_t _isreset = 0 ;
 
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_I2C1_Init();
-  MX_USART1_UART_Init();
-  /* USER CODE BEGIN 2 */
-  Buttons_Init();
-  ssd1306_Init();
-  testerState = STATE_CONFIG;
+	/* USER CODE END SysInit */
+
+	/* Initialize all configured peripherals */
+	MX_GPIO_Init();
+	MX_I2C1_Init();
+	/* USER CODE BEGIN 2 */
+	Buttons_Init();
+	ssd1306_Init();
+	testerState = STATE_CONFIG;
+
+	LABEL label_clicks;
+	LABEL label_clickCount;
+	LABEL label_errors;
+	LABEL label_errorCount;
+
+
+	setup_label(&label_clicks, 0, 0, "clicks");
+	setup_label(&label_errors, 0, 20, "errors:");
+	setup_label(&label_clickCount, 0, 8, "not set");
+	setup_label(&label_errorCount, 44, 20, "not set");
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -116,15 +140,21 @@ int main(void)
 	  	  case STATE_CONFIG:
 	  		  if(needToRedrawIcon){
 	  			  needToRedrawIcon = 0;
-	  			  clear_icon();
+
+	  			ssd1306_Fill(Black);
+
+	  			ssd1306_SetCursor(label_clicks.start_x, label_clicks.start_y);
+	  			ssd1306_WriteString(label_clicks.label, Font_6x8, White);
+
+	  			ssd1306_SetCursor(label_errors.start_x, label_errors.start_y);
+	  			ssd1306_WriteString(label_errors.label, Font_6x8, White);
+
+	  			ssd1306_Line(0, HORIZONTAL_LINE_Y, VERTICAL_LINE_X, HORIZONTAL_LINE_Y, White);
+	  			ssd1306_Line(VERTICAL_LINE_X, 0, VERTICAL_LINE_X, 32, White);
+	  			ssd1306_UpdateScreen();
+
 	  			  ssd1306_DrawBitmap(X_ICON_BEGIN, Y_ICON_BEGIN, CONFIG_IMG, CONFIG_IMG_WIDTH, CONFIG_IMG_HEIGHT, White);
-	  			  ssd1306_UpdateScreen();
-	  		  }
-	  		  if( gButtons.btnPlus.click ){
-	  			  gTesterCurData.status.pressCount++;
-	  		    }
-	  		  else if(gButtons.btnMinus.click){
-	  			  gTesterCurData.status.pressCount--;
+				  ssd1306_UpdateScreen();
 	  		  }
 	  		  break;
 	  	  case STATE_PRESS:
@@ -137,7 +167,6 @@ int main(void)
 	  		  gTesterCurData.status.pressCount--;
 	  		  testerState = STATE_WAIT;
 
-	  //		  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 	  		  HAL_Delay(10);
 	  //		  break;
 	  	  case STATE_WAIT:
@@ -149,13 +178,7 @@ int main(void)
 	  			  waitCounter = 0;
 	  			  testerState = STATE_PRESS;
 	  		  }
-	  //		  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == RESET){
-	  //			  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-	  //			  testerState = STATE_PRESS;
-	  //		  }
-	  //		  else{
-	  //			  HAL_Delay(1);
-	  //		  }
+
 	  		  break;
 	  	  case STATE_PAUSE:
 	  		  if(needToRedrawIcon){
@@ -177,38 +200,72 @@ int main(void)
 	  	  };
 	  //	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
 	  	  if (testerState != STATE_CONFIG){
-	  		  if(gButtons.btnOk.longPressEnd){
-	  				  testerState = STATE_CONFIG;
-	  				  needToRedrawIcon = 1;
-	  				  gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
-	  		  }
-	  		  else if(gButtons.btnOk.click){
+	  		  if(gButtons.btnOk.click){
 	  			  testerState = (testerState == STATE_PAUSE ? STATE_PRESS : STATE_PAUSE);
 	  			  needToRedrawIcon = 1;
 	  		  }
 	  	  }
 	  	  else if(gButtons.btnOk.click){
-	  //		  if(testerState == STATE_CONFIG){
 	  		  testerState = STATE_PRESS;
 	  		  needToRedrawIcon = 1;
-	  //		  }
-
 	  	  }
-	  //	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-	  //	  HAL_Delay(500);
 
 
-	  	  Buttons_Task();
-	  	  if(gTesterCurData.val != gTesterPrevData.val){
-	  //		  ssd1306_DrawPixel(0,40,White);
-	  		  //ssd1306_DrawBitmap(102, 8, PAUSE_IMG, PAUSE_IMG_WIDTH, PAUSE_IMG_HEIGHT, White);
-	  		  memcpy(&gTesterPrevData.status, &gTesterCurData.status, sizeof(gTesterPrevData.status));
-	  		  int32_to_str(gTesterCurData.status.pressCount, gTesterCurData.status.str_pressCount);
-	  		  clear_text();
-	  		  ssd1306_SetCursor(X_TEXT_BEGIN, Y_TEXT_BEGIN);
-	  		  ssd1306_WriteString(gTesterCurData.status.str_pressCount, Font_6x8, White);
-	  		  ssd1306_UpdateScreen();
+		Buttons_Task();
+		if (gButtons.btnOk.longPress && !_isreset){
+
+			if(LongPressCount == 0)
+			{
+				testerState = STATE_PAUSE;
+				DrawResetScreen();
+			}
+
+			if((LongPressCount++) % LONG_PRESS_PRESC == 0){
+				ssd1306_FillRectangle(10, 8, 10 + (int)(LongPressCount/50) * 15, 16, White);
+				ssd1306_UpdateScreen();
+			}
+			if(LongPressCount == (LONG_PRESS_PRESC * 5) + 5){
+				testerState = STATE_CONFIG;
+				needToRedrawIcon = 1;
+				gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
+				gTesterPrevData.val = 0;
+				_isreset = 1;
+			}
+		}
+		else if(gButtons.btnOk.longPressEnd){
+			LongPressCount = 0;
+			if(_isreset)
+				_isreset = 0;
+			else{
+				testerState = STATE_PRESS;
+
+				ssd1306_Fill(Black);
+
+				ssd1306_SetCursor(label_clicks.start_x, label_clicks.start_y);
+				ssd1306_WriteString(label_clicks.label, Font_6x8, White);
+
+				ssd1306_SetCursor(label_errors.start_x, label_errors.start_y);
+				ssd1306_WriteString(label_errors.label, Font_6x8, White);
+
+				ssd1306_Line(0, HORIZONTAL_LINE_Y, VERTICAL_LINE_X, HORIZONTAL_LINE_Y, White);
+				ssd1306_Line(VERTICAL_LINE_X, 0, VERTICAL_LINE_X, 32, White);
+				ssd1306_UpdateScreen();
+			}
+		}
+		else if(gTesterCurData.val != gTesterPrevData.val){
+//			HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
+//			snprintf(trans_str, 63, "Time %d:%d:%d\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+			memcpy(&gTesterPrevData.status, &gTesterCurData.status, sizeof(gTesterPrevData.status));
+
+			ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_6x8);
+			ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_6x8);
+
+//			ssd1306_WriteString(trans_str, Font_6x8, White);
+
+			ssd1306_UpdateScreen();
 	  	  }
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -287,39 +344,6 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -336,16 +360,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PC13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
   /*Configure GPIO pins : PB12 PB13 PB14 */
   GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -357,24 +371,59 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void int32_to_str(int32_t num, char* str) {
-    snprintf(str, MAX_INT32_STR_LENGTH, "%d", num);
-}
+
 
 //void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim){
 //
 //}
 
-void clear_text(){
-	ssd1306_FillRectangle(X_TEXT_BEGIN, Y_TEXT_BEGIN,
-					  X_TEXT_BEGIN + MAX_INT32_STR_LENGTH*Font_6x8.FontWidth,
-					  Y_TEXT_BEGIN + Font_6x8.FontHeight, Black);
+void clear_text(uint8_t x, uint8_t y, FontDef font){
+	ssd1306_FillRectangle(x, y, x + LABEL_MAX_LENGTH*font.FontWidth,
+					  y + font.FontHeight, Black);
 }
 
 void clear_icon(){
 	ssd1306_FillRectangle(X_ICON_BEGIN, Y_ICON_BEGIN,
 					  X_ICON_BEGIN + 16, Y_ICON_BEGIN + 16, Black);
 }
+
+void setup_label(LABEL *Label, uint8_t x, uint8_t y, char str[]){
+	Label->start_x = x;
+	Label->start_y = y;
+	snprintf(Label->label, LABEL_MAX_LENGTH, str);
+
+}
+
+void ssd1306_WriteUint(LABEL *Label, uint32_t val, FontDef font){
+	clear_text(Label->start_x, Label->start_y, font);
+	ssd1306_SetCursor(Label->start_x, Label->start_y);
+	snprintf(Label->label, LABEL_MAX_LENGTH, "%d", val);
+	ssd1306_WriteString(Label->label, font, White);
+
+}
+
+void DrawResetScreen(void){
+	ssd1306_Fill(Black);
+	ssd1306_DrawBitmap(X_ICON_BEGIN, Y_ICON_BEGIN, RESET_IMG, RESET_IMG_WIDTH, RESET_IMG_HEIGHT, White);
+	ssd1306_DrawRectangle(10, 8, 85, 16, White);
+	ssd1306_UpdateScreen();
+}
+
+
+//void DrawLinesAndLabels(void){
+//	ssd1306_Fill(Black);
+//
+//	ssd1306_SetCursor(label_clicks.start_x, label_clicks.start_y);
+//	ssd1306_WriteString(label_clicks.label, Font_6x8, White);
+//
+//	ssd1306_SetCursor(label_errors.start_x, label_errors.start_y);
+//	ssd1306_WriteString(label_errors.label, Font_6x8, White);
+//
+//	ssd1306_Line(0, HORIZONTAL_LINE_Y, VERTICAL_LINE_X, HORIZONTAL_LINE_Y, White);
+//	ssd1306_Line(VERTICAL_LINE_X, 0, VERTICAL_LINE_X, 32, White);
+//	ssd1306_UpdateScreen();
+//}
+
 /* USER CODE END 4 */
 
 /**

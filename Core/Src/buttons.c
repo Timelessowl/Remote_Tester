@@ -8,8 +8,8 @@ BUTTONS gButtons;
 #define BTN_CLICK_MIN_COUNT       (1)
 static uint8_t _btnIsDownCount[BUTTONS_COUNT];
 
-static const uint16_t _btnPins[] = {BUTTON1_PIN, BUTTON2_PIN, BUTTON3_PIN};
-
+//static const uint16_t _btnPins[] = {BUTTON1_PIN, BUTTON2_PIN, BUTTON3_PIN};
+static const uint16_t _btnPins[] = { BUTTON1_PIN };
 static uint8_t _BtnIsPressed(uint16_t btnPin);
 
 void Buttons_Init(void)
