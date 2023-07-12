@@ -69,14 +69,15 @@ typedef enum
 	STATE_PRESS,
 	STATE_WAIT,
 	STATE_PAUSE,
-	STATE_FINISH
+	STATE_FINISH,
+	STATE_FAILURE
 
 }TESTER_STATE;
 
 typedef struct
 {
 	union{
-		uint8_t val;
+		uint64_t val;
 		struct
 		{
 			uint32_t pressCount;
@@ -84,6 +85,13 @@ typedef struct
 		}status;
 	};
 } TESTER_DATA;
+
+typedef struct
+{
+	uint32_t failedPressNumber;
+	RTC_TimeTypeDef errorTime;
+}ERROR_LOG;
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

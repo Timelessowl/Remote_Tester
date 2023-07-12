@@ -32,10 +32,11 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define VERTICAL_LINE_X             110
-#define HORIZONTAL_LINE_Y           18
+#define HORIZONTAL_LINE_Y           19
 #define X_ICON_BEGIN           		112
 #define Y_ICON_BEGIN          		8
 #define DEFAULT_PRESS_COUNTER  		10000
+#define MAX_ERROR_COUNT             5
 #define LONG_PRESS_PRESC			50
 /* USER CODE END PD */
 
@@ -47,6 +48,10 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+RTC_HandleTypeDef hrtc;
+
+UART_HandleTypeDef huart1;
+
 /* USER CODE BEGIN PV */
 uint32_t pressCount;
 uint8_t testEngineState;
@@ -54,8 +59,9 @@ TESTER_STATE testerState;
 TESTER_DATA gTesterCurData;
 TESTER_DATA gTesterPrevData;
 
-//RTC_TimeTypeDef sTime = {0};
-//RTC_DateTypeDef DateToUpdate = {0};
+RTC_TimeTypeDef sTime = {0};
+RTC_DateTypeDef DateToUpdate = {0};
+ERROR_LOG errorLog[MAX_ERROR_COUNT];
 
 char trans_str[64] = {0,};
 /* USER CODE END PV */
@@ -64,13 +70,17 @@ char trans_str[64] = {0,};
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
-void clear_text(uint8_t x, uint8_t y, FontDef font);
+void clear_text(uint8_t x, uint8_t y, uint8_t lenght, FontDef font);
 void clear_icon(void);
 void setup_label(LABEL *Label, uint8_t x, uint8_t y, char str[]);
 void ssd1306_WriteUint(LABEL *Label, uint32_t val, FontDef font);
 void DrawResetScreen(void);
-//void DrawLinesAndLabels(void);
+void DrawLinesAndLabels(LABEL *LabelClick, LABEL *LabelError);
+void CreateErrorLog(ERROR_LOG *er);
+void UartSendErrorLog(ERROR_LOG *er);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -84,40 +94,47 @@ void DrawResetScreen(void);
   */
 int main(void)
 {
-	/* USER CODE BEGIN 1 */
+  /* USER CODE BEGIN 1 */
 
-	/* USER CODE END 1 */
+  /* USER CODE END 1 */
 
-	/* MCU Configuration--------------------------------------------------------*/
+  /* MCU Configuration--------------------------------------------------------*/
 
-	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-	HAL_Init();
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
 
-	/* USER CODE BEGIN Init */
+  /* USER CODE BEGIN Init */
 
-	/* USER CODE END Init */
+  /* USER CODE END Init */
 
-	/* Configure the system clock */
-	SystemClock_Config();
+  /* Configure the system clock */
+  SystemClock_Config();
 
-	/* USER CODE BEGIN SysInit */
+  /* USER CODE BEGIN SysInit */
 	uint8_t test;   //FIXME
-	uint8_t waitCounter;
+	uint8_t fingerWaitCounter;
+	uint8_t buttonWaitCounter;
 	uint8_t needToRedrawIcon = 1;
 	gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
 	gTesterCurData.status.errorCount = 0;
 	uint8_t LongPressCount = 0;
 	uint8_t _isreset = 0 ;
 
-	/* USER CODE END SysInit */
+  /* USER CODE END SysInit */
 
-	/* Initialize all configured peripherals */
-	MX_GPIO_Init();
-	MX_I2C1_Init();
-	/* USER CODE BEGIN 2 */
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_I2C1_Init();
+  MX_USART1_UART_Init();
+  MX_RTC_Init();
+  /* USER CODE BEGIN 2 */
 	Buttons_Init();
 	ssd1306_Init();
 	testerState = STATE_CONFIG;
+
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, RESET);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, RESET);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, RESET);
 
 	LABEL label_clicks;
 	LABEL label_clickCount;
@@ -125,10 +142,10 @@ int main(void)
 	LABEL label_errorCount;
 
 
-	setup_label(&label_clicks, 0, 0, "clicks");
-	setup_label(&label_errors, 0, 20, "errors:");
-	setup_label(&label_clickCount, 0, 8, "not set");
-	setup_label(&label_errorCount, 44, 20, "not set");
+	setup_label(&label_clicks, 0, 6, "clicks");
+	setup_label(&label_errors, 0, 23, "errors:");
+	setup_label(&label_clickCount, 42, 0, "not set");
+	setup_label(&label_errorCount, 42, 22, "not set");
 
   /* USER CODE END 2 */
 
@@ -141,18 +158,9 @@ int main(void)
 	  		  if(needToRedrawIcon){
 	  			  needToRedrawIcon = 0;
 
-	  			ssd1306_Fill(Black);
-
-	  			ssd1306_SetCursor(label_clicks.start_x, label_clicks.start_y);
-	  			ssd1306_WriteString(label_clicks.label, Font_6x8, White);
-
-	  			ssd1306_SetCursor(label_errors.start_x, label_errors.start_y);
-	  			ssd1306_WriteString(label_errors.label, Font_6x8, White);
-
-	  			ssd1306_Line(0, HORIZONTAL_LINE_Y, VERTICAL_LINE_X, HORIZONTAL_LINE_Y, White);
-	  			ssd1306_Line(VERTICAL_LINE_X, 0, VERTICAL_LINE_X, 32, White);
-	  			ssd1306_UpdateScreen();
-
+	  			  DrawLinesAndLabels(&label_clicks, &label_errors);
+	  			  ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_11x18);
+	  			  ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_7x10);
 	  			  ssd1306_DrawBitmap(X_ICON_BEGIN, Y_ICON_BEGIN, CONFIG_IMG, CONFIG_IMG_WIDTH, CONFIG_IMG_HEIGHT, White);
 				  ssd1306_UpdateScreen();
 	  		  }
@@ -163,21 +171,58 @@ int main(void)
 	  			  clear_icon();
 	  			  ssd1306_UpdateScreen();
 	  		  }
-	  //		  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);   //Activating press relay
-	  		  gTesterCurData.status.pressCount--;
-	  		  testerState = STATE_WAIT;
+	  		if (gTesterCurData.status.pressCount != 0){
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, SET);   //Activating press finger
+				testerState = STATE_WAIT;
+				fingerWaitCounter = 0;
+				buttonWaitCounter = 0 ;
+	  		}
+	  		else
+	  			testerState = STATE_FINISH;
+
 
 	  		  HAL_Delay(10);
 	  //		  break;
 	  	  case STATE_WAIT:
-	  		  //FIXME
-	  		  if(++waitCounter != 20){
-	  			  HAL_Delay(1);
+
+	  		  if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_14) != SET){
+			  	  if (fingerWaitCounter++ == 20){
+			  		  //Finger aren't working correctly
+			  		  //Hardware error => stops cycle
+			  		  snprintf(trans_str, 63, "Finger out of order");
+			  		  HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+			  		  testerState = STATE_CONFIG;
+			  		  needToRedrawIcon = 1;
+			  	  }
 	  		  }
-	  		  else{
-	  			  waitCounter = 0;
-	  			  testerState = STATE_PRESS;
-	  		  }
+			  else{
+				  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_13) != SET){  //FIXME: В итогой версии != RESET, т.к. нажатие будет прижиммать линию к земле
+					  if (buttonWaitCounter++ == 20){
+						  //Finger working correctly
+						  //No response from button
+						  //Register error and move on
+						  snprintf(trans_str, 63, "No response from button\n\r");
+						  HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+						  CreateErrorLog(&errorLog[gTesterCurData.status.errorCount]);
+						  UartSendErrorLog(&errorLog);
+						  gTesterCurData.status.errorCount++;
+
+						  if (gTesterCurData.status.errorCount >= MAX_ERROR_COUNT){
+							  testerState = STATE_FAILURE;
+							  needToRedrawIcon = 1;
+						  }
+						  else
+							  testerState = STATE_PRESS;
+					  }
+				  }
+				  else{
+					  gTesterCurData.status.pressCount--;
+					  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, RESET);
+					  testerState = STATE_PRESS;
+					  HAL_Delay(10);
+				  }
+			  }
+
 
 	  		  break;
 	  	  case STATE_PAUSE:
@@ -195,12 +240,25 @@ int main(void)
 	  		  HAL_Delay(1);
 	  		  break;
 
-
+	  	  case STATE_FAILURE:
+	  		  if (needToRedrawIcon)
+	  		  {
+	  			ssd1306_Fill(Black);
+				ssd1306_DrawBitmap(X_ICON_BEGIN, Y_ICON_BEGIN, ALERT_IMG, ALERT_IMG_WIDTH, RESET_IMG_HEIGHT, White);
+				ssd1306_SetCursor(10, 8);
+				ssd1306_WriteString("Error", Font_11x18, White);
+				ssd1306_UpdateScreen();
+				needToRedrawIcon = 0;
+	  		  }
+	  		  else
+	  			  HAL_Delay(1);
+	  		  break;
 
 	  	  };
+
 	  //	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
 	  	  if (testerState != STATE_CONFIG){
-	  		  if(gButtons.btnOk.click){
+	  		  if(gButtons.btnOk.click && testerState != STATE_FAILURE){
 	  			  testerState = (testerState == STATE_PAUSE ? STATE_PRESS : STATE_PAUSE);
 	  			  needToRedrawIcon = 1;
 	  		  }
@@ -228,6 +286,7 @@ int main(void)
 				testerState = STATE_CONFIG;
 				needToRedrawIcon = 1;
 				gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
+				gTesterCurData.status.errorCount = 0;
 				gTesterPrevData.val = 0;
 				_isreset = 1;
 			}
@@ -237,33 +296,32 @@ int main(void)
 			if(_isreset)
 				_isreset = 0;
 			else{
-				testerState = STATE_PRESS;
-
-				ssd1306_Fill(Black);
-
-				ssd1306_SetCursor(label_clicks.start_x, label_clicks.start_y);
-				ssd1306_WriteString(label_clicks.label, Font_6x8, White);
-
-				ssd1306_SetCursor(label_errors.start_x, label_errors.start_y);
-				ssd1306_WriteString(label_errors.label, Font_6x8, White);
-
-				ssd1306_Line(0, HORIZONTAL_LINE_Y, VERTICAL_LINE_X, HORIZONTAL_LINE_Y, White);
-				ssd1306_Line(VERTICAL_LINE_X, 0, VERTICAL_LINE_X, 32, White);
-				ssd1306_UpdateScreen();
+				if (gTesterCurData.status.errorCount >= 5){
+					testerState = STATE_FAILURE;
+					needToRedrawIcon = 1;
+				}
+				else{
+					testerState = STATE_PRESS;
+					DrawLinesAndLabels(&label_clicks, &label_errors);
+				}
 			}
 		}
 		else if(gTesterCurData.val != gTesterPrevData.val){
-//			HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
+			HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
 //			snprintf(trans_str, 63, "Time %d:%d:%d\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+//			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
 			memcpy(&gTesterPrevData.status, &gTesterCurData.status, sizeof(gTesterPrevData.status));
 
-			ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_6x8);
-			ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_6x8);
+			ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_11x18);
+			ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_7x10);
 
 //			ssd1306_WriteString(trans_str, Font_6x8, White);
-
+//			snprintf(trans_str, 63, "clicks %d  errors %d\n\r", gTesterCurData.status.pressCount, gTesterCurData.status.errorCount);
+//			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+//			HAL_Delay(100);
 			ssd1306_UpdateScreen();
 	  	  }
+
 
 
     /* USER CODE END WHILE */
@@ -281,11 +339,13 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
@@ -304,6 +364,12 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
@@ -344,6 +410,70 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
+  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -360,10 +490,30 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PB12 PB13 PB14 */
   GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -377,8 +527,8 @@ static void MX_GPIO_Init(void)
 //
 //}
 
-void clear_text(uint8_t x, uint8_t y, FontDef font){
-	ssd1306_FillRectangle(x, y, x + LABEL_MAX_LENGTH*font.FontWidth,
+void clear_text(uint8_t x, uint8_t y, uint8_t length, FontDef font){
+	ssd1306_FillRectangle(x, y, x + length*font.FontWidth,
 					  y + font.FontHeight, Black);
 }
 
@@ -395,9 +545,9 @@ void setup_label(LABEL *Label, uint8_t x, uint8_t y, char str[]){
 }
 
 void ssd1306_WriteUint(LABEL *Label, uint32_t val, FontDef font){
-	clear_text(Label->start_x, Label->start_y, font);
-	ssd1306_SetCursor(Label->start_x, Label->start_y);
 	snprintf(Label->label, LABEL_MAX_LENGTH, "%d", val);
+	clear_text(Label->start_x, Label->start_y, 6, font);
+	ssd1306_SetCursor(Label->start_x, Label->start_y);
 	ssd1306_WriteString(Label->label, font, White);
 
 }
@@ -410,19 +560,37 @@ void DrawResetScreen(void){
 }
 
 
-//void DrawLinesAndLabels(void){
-//	ssd1306_Fill(Black);
-//
-//	ssd1306_SetCursor(label_clicks.start_x, label_clicks.start_y);
-//	ssd1306_WriteString(label_clicks.label, Font_6x8, White);
-//
-//	ssd1306_SetCursor(label_errors.start_x, label_errors.start_y);
-//	ssd1306_WriteString(label_errors.label, Font_6x8, White);
-//
-//	ssd1306_Line(0, HORIZONTAL_LINE_Y, VERTICAL_LINE_X, HORIZONTAL_LINE_Y, White);
-//	ssd1306_Line(VERTICAL_LINE_X, 0, VERTICAL_LINE_X, 32, White);
-//	ssd1306_UpdateScreen();
-//}
+void DrawLinesAndLabels(LABEL *LabelClick, LABEL *LabelError){
+	ssd1306_Fill(Black);
+
+	ssd1306_SetCursor(LabelClick->start_x, LabelClick->start_y);
+	ssd1306_WriteString(LabelClick->label, Font_6x8, White);
+
+	ssd1306_SetCursor(LabelError->start_x, LabelError->start_y);
+	ssd1306_WriteString(LabelError->label, Font_6x8, White);
+
+	ssd1306_Line(0, HORIZONTAL_LINE_Y, VERTICAL_LINE_X, HORIZONTAL_LINE_Y, White);
+	ssd1306_Line(VERTICAL_LINE_X, 0, VERTICAL_LINE_X, 32, White);
+
+	ssd1306_UpdateScreen();
+}
+
+void CreateErrorLog(ERROR_LOG *er){
+	  er->failedPressNumber =  gTesterCurData.status.pressCount;
+	  HAL_RTC_GetTime(&hrtc, &er->errorTime, RTC_FORMAT_BIN);
+}
+
+void UartSendErrorLog(ERROR_LOG *er){
+	uint8_t i;
+	for (i = 0 ; i < gTesterCurData.status.errorCount + 1; i++){
+		snprintf(trans_str, 63, "Error on press %d at %d:%d:%d\n\r", er->failedPressNumber,
+				er->errorTime.Hours, er->errorTime.Minutes, er->errorTime.Seconds);
+		HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+		er++;
+	}
+//	snprintf(trans_str, 63, "Time %d:%d:%d\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+//	HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+}
 
 /* USER CODE END 4 */
 
