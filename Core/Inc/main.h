@@ -84,6 +84,10 @@ typedef struct
 			uint8_t errorCount;
 		}status;
 	};
+	struct{
+		uint32_t startPressCount;
+		uint8_t maxErrorCount;
+	}settings;
 } TESTER_DATA;
 
 typedef struct

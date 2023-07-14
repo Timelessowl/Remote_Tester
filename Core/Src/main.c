@@ -36,7 +36,7 @@
 #define X_ICON_BEGIN           		112
 #define Y_ICON_BEGIN          		8
 #define DEFAULT_PRESS_COUNTER  		10000
-#define MAX_ERROR_COUNT             5
+#define DEFAULT_MAX_ERROR_COUNT     5
 #define LONG_PRESS_PRESC			50
 /* USER CODE END PD */
 
@@ -61,7 +61,7 @@ TESTER_DATA gTesterPrevData;
 
 RTC_TimeTypeDef sTime = {0};
 RTC_DateTypeDef DateToUpdate = {0};
-ERROR_LOG errorLog[MAX_ERROR_COUNT];
+ERROR_LOG errorLog[DEFAULT_MAX_ERROR_COUNT];
 
 char trans_str[64] = {0,};
 /* USER CODE END PV */
@@ -115,7 +115,10 @@ int main(void)
 	uint8_t fingerWaitCounter;
 	uint8_t buttonWaitCounter;
 	uint8_t needToRedrawIcon = 1;
-	gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
+	gTesterCurData.settings.maxErrorCount = DEFAULT_MAX_ERROR_COUNT;
+	gTesterCurData.settings.startPressCount = DEFAULT_PRESS_COUNTER;
+
+	gTesterCurData.status.pressCount = gTesterCurData.settings.startPressCount;
 	gTesterCurData.status.errorCount = 0;
 	uint8_t LongPressCount = 0;
 	uint8_t _isreset = 0 ;
@@ -196,7 +199,7 @@ int main(void)
 			  	  }
 	  		  }
 			  else{
-				  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_13) != SET){  //FIXME: В итогой версии != RESET, т.к. нажатие будет прижиммать линию к земле
+				  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_13) != SET){  //FIXME: В итогой версии != RESET, т.к. нажатие будет прижимать линию к земле
 					  if (buttonWaitCounter++ == 20){
 						  //Finger working correctly
 						  //No response from button
@@ -204,10 +207,10 @@ int main(void)
 						  snprintf(trans_str, 63, "No response from button\n\r");
 						  HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
 						  CreateErrorLog(&errorLog[gTesterCurData.status.errorCount]);
-						  UartSendErrorLog(&errorLog);
+						  UartSendErrorLog(&errorLog[0]);
 						  gTesterCurData.status.errorCount++;
 
-						  if (gTesterCurData.status.errorCount >= MAX_ERROR_COUNT){
+						  if (gTesterCurData.status.errorCount >= gTesterCurData.settings.maxErrorCount){
 							  testerState = STATE_FAILURE;
 							  needToRedrawIcon = 1;
 						  }
@@ -268,8 +271,6 @@ int main(void)
 	  		  needToRedrawIcon = 1;
 	  	  }
 
-
-		Buttons_Task();
 		if (gButtons.btnOk.longPress && !_isreset){
 
 			if(LongPressCount == 0)
@@ -323,6 +324,7 @@ int main(void)
 	  	  }
 
 
+		Buttons_Task();
 
     /* USER CODE END WHILE */
 
@@ -394,7 +396,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
