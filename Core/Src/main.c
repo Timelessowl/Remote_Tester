@@ -38,6 +38,8 @@
 #define DEFAULT_PRESS_COUNTER  		10000
 #define DEFAULT_MAX_ERROR_COUNT     5
 #define LONG_PRESS_PRESC			50
+
+#define LED_write(state)            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, !state);
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -135,8 +137,6 @@ int main(void)
 	ssd1306_Init();
 	testerState = STATE_CONFIG;
 
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, RESET);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, RESET);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, RESET);
 
 	LABEL label_clicks;
@@ -150,6 +150,7 @@ int main(void)
 	setup_label(&label_clickCount, 42, 0, "not set");
 	setup_label(&label_errorCount, 42, 22, "not set");
 
+	LED_write(0);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -200,10 +201,12 @@ int main(void)
 	  		  }
 			  else{
 				  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_13) != SET){  //FIXME: В итогой версии != RESET, т.к. нажатие будет прижимать линию к земле
+					  LED_write(1);
 					  if (buttonWaitCounter++ == 20){
 						  //Finger working correctly
 						  //No response from button
 						  //Register error and move on
+						  LED_write(0);
 						  snprintf(trans_str, 63, "No response from button\n\r");
 						  HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
 						  CreateErrorLog(&errorLog[gTesterCurData.status.errorCount]);
@@ -211,6 +214,7 @@ int main(void)
 						  gTesterCurData.status.errorCount++;
 
 						  if (gTesterCurData.status.errorCount >= gTesterCurData.settings.maxErrorCount){
+							  LED_write(0);
 							  testerState = STATE_FAILURE;
 							  needToRedrawIcon = 1;
 						  }
@@ -219,6 +223,7 @@ int main(void)
 					  }
 				  }
 				  else{
+					  LED_write(0);
 					  gTesterCurData.status.pressCount--;
 					  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, RESET);
 					  testerState = STATE_PRESS;
@@ -286,9 +291,10 @@ int main(void)
 			if(LongPressCount == (LONG_PRESS_PRESC * 5) + 5){
 				testerState = STATE_CONFIG;
 				needToRedrawIcon = 1;
-				gTesterCurData.status.pressCount = DEFAULT_PRESS_COUNTER;
+				gTesterCurData.status.pressCount = gTesterCurData.settings.startPressCount;
 				gTesterCurData.status.errorCount = 0;
 				gTesterPrevData.val = 0;
+
 				_isreset = 1;
 			}
 		}
@@ -297,7 +303,7 @@ int main(void)
 			if(_isreset)
 				_isreset = 0;
 			else{
-				if (gTesterCurData.status.errorCount >= 5){
+				if (gTesterCurData.status.errorCount >= gTesterCurData.settings.maxErrorCount){
 					testerState = STATE_FAILURE;
 					needToRedrawIcon = 1;
 				}
@@ -426,6 +432,9 @@ static void MX_RTC_Init(void)
 
   /* USER CODE END RTC_Init 0 */
 
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef DateToUpdate = {0};
+
   /* USER CODE BEGIN RTC_Init 1 */
 
   /* USER CODE END RTC_Init 1 */
@@ -434,8 +443,32 @@ static void MX_RTC_Init(void)
   */
   hrtc.Instance = RTC;
   hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
-  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
+  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_NONE;
   if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0;
+  sTime.Minutes = 0;
+  sTime.Seconds = 0;
+
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  DateToUpdate.WeekDay = RTC_WEEKDAY_MONDAY;
+  DateToUpdate.Month = RTC_MONTH_JANUARY;
+  DateToUpdate.Date = 1;
+  DateToUpdate.Year = 0;
+
+  if (HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN) != HAL_OK)
   {
     Error_Handler();
   }
