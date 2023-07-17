@@ -66,6 +66,8 @@ RTC_DateTypeDef DateToUpdate = {0};
 ERROR_LOG errorLog[DEFAULT_MAX_ERROR_COUNT];
 
 char trans_str[64] = {0,};
+char recieve_str[8] = {0,};
+char request_form[8] = "1000";
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -151,6 +153,7 @@ int main(void)
 	setup_label(&label_errorCount, 42, 22, "not set");
 
 	LED_write(0);
+	HAL_UART_Receive_IT(&huart1, (uint8_t*)&recieve_str, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -181,8 +184,10 @@ int main(void)
 				fingerWaitCounter = 0;
 				buttonWaitCounter = 0 ;
 	  		}
-	  		else
+	  		else{
 	  			testerState = STATE_FINISH;
+	  			break;
+	  		}
 
 
 	  		  HAL_Delay(10);
@@ -315,8 +320,13 @@ int main(void)
 		}
 		else if(gTesterCurData.val != gTesterPrevData.val){
 			HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
-//			snprintf(trans_str, 63, "Time %d:%d:%d\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+//			snprintf(trans_str, 63, "Time %d:%d:%d\n\r", sTime.Hours, sTime.Minutes, sTime.Seconds);
 //			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+
+//			HAL_RTC_GetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN);
+//			snprintf(trans_str, 63, "Date %d-%d-20%d\n\n\r", DateToUpdate.Date, DateToUpdate.Month, DateToUpdate.Year);
+//			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+
 			memcpy(&gTesterPrevData.status, &gTesterCurData.status, sizeof(gTesterPrevData.status));
 
 			ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_11x18);
@@ -560,6 +570,17 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+          if(huart == &huart1)
+          {
+        	  if (strcmp (recieve_str, request_form)==0){
+				  snprintf(trans_str, 63, "Request received\n\r");
+				  HAL_UART_Transmit(&huart1, (uint8_t*)&trans_str, 1, 1000);
+        	  }
+			  HAL_UART_Receive_IT(&huart1, (uint8_t*)&recieve_str, 1);
+          }
+}
 
 //void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim){
 //

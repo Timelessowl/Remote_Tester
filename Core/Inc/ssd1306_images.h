@@ -6,7 +6,7 @@
  * Единый формат для всех (4) надписей
  */
 
-#define LABEL_MAX_LENGTH    10
+#define LABEL_MAX_LENGTH    24
 
 // Иконка настройки(16x16)
 #define CONFIG_IMG_WIDTH  (16)
