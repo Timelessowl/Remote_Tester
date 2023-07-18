@@ -48,6 +48,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+CRC_HandleTypeDef hcrc;
+
 I2C_HandleTypeDef hi2c1;
 
 RTC_HandleTypeDef hrtc;
@@ -55,7 +57,6 @@ RTC_HandleTypeDef hrtc;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-uint32_t pressCount;
 uint8_t testEngineState;
 TESTER_STATE testerState;
 TESTER_DATA gTesterCurData;
@@ -67,7 +68,9 @@ ERROR_LOG errorLog[DEFAULT_MAX_ERROR_COUNT];
 
 char trans_str[64] = {0,};
 char recieve_str[8] = {0,};
-char request_form[8] = "1000";
+char request_form[8] = "1";
+
+uint32_t res_addr = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -76,11 +79,12 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_RTC_Init(void);
+static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
 void clear_text(uint8_t x, uint8_t y, uint8_t lenght, FontDef font);
 void clear_icon(void);
 void setup_label(LABEL *Label, uint8_t x, uint8_t y, char str[]);
-void ssd1306_WriteUint(LABEL *Label, uint32_t val, FontDef font);
+void ssd1306_WriteUint(LABEL *Label, uint16_t val, FontDef font);
 void DrawResetScreen(void);
 void DrawLinesAndLabels(LABEL *LabelClick, LABEL *LabelError);
 void CreateErrorLog(ERROR_LOG *er);
@@ -118,7 +122,13 @@ int main(void)
 	uint8_t test;   //FIXME
 	uint8_t fingerWaitCounter;
 	uint8_t buttonWaitCounter;
+	myBuf_t wdata[BUFFSIZE];
 	uint8_t needToRedrawIcon = 1;
+
+	res_addr = flash_search_adress(STARTADDR, BUFFSIZE * DATAWIDTH);
+	read_last_data_in_flash(wdata);
+//	gTesterCurData.settings.startPressCount = wdata[0];
+//	gTesterCurData.settings.maxErrorCount = wdata[1];
 	gTesterCurData.settings.maxErrorCount = DEFAULT_MAX_ERROR_COUNT;
 	gTesterCurData.settings.startPressCount = DEFAULT_PRESS_COUNTER;
 
@@ -134,6 +144,7 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   MX_RTC_Init();
+  MX_CRC_Init();
   /* USER CODE BEGIN 2 */
 	Buttons_Init();
 	ssd1306_Init();
@@ -167,7 +178,7 @@ int main(void)
 
 	  			  DrawLinesAndLabels(&label_clicks, &label_errors);
 	  			  ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_11x18);
-	  			  ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_7x10);
+	  			  ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_6x8);
 	  			  ssd1306_DrawBitmap(X_ICON_BEGIN, Y_ICON_BEGIN, CONFIG_IMG, CONFIG_IMG_WIDTH, CONFIG_IMG_HEIGHT, White);
 				  ssd1306_UpdateScreen();
 	  		  }
@@ -242,7 +253,7 @@ int main(void)
 	  		  if(needToRedrawIcon){
 	  			  needToRedrawIcon = 0;
 	  			  clear_icon();
-	  			  ssd1306_DrawBitmap(X_ICON_BEGIN, Y_ICON_BEGIN, PAUSE_IMG, PAUSE_IMG_WIDTH, PAUSE_IMG_HEIGHT, White);
+	  			  ssd1306_DrawBitmap(X_ICON_BEGIN + 3, Y_ICON_BEGIN, PAUSE_IMG, PAUSE_IMG_WIDTH, PAUSE_IMG_HEIGHT, White);
 	  			  ssd1306_UpdateScreen();
 	  		  }
 	  		  HAL_Delay(1);
@@ -279,6 +290,9 @@ int main(void)
 	  	  else if(gButtons.btnOk.click){
 	  		  testerState = STATE_PRESS;
 	  		  needToRedrawIcon = 1;
+	  		  res_addr = flash_search_adress(STARTADDR, BUFFSIZE * DATAWIDTH);
+	  		  myBuf_t wdata[BUFFSIZE] = {gTesterCurData.settings.startPressCount, gTesterCurData.settings.maxErrorCount, 0x0000};
+	  		  write_to_flash(wdata);
 	  	  }
 
 		if (gButtons.btnOk.longPress && !_isreset){
@@ -330,7 +344,7 @@ int main(void)
 			memcpy(&gTesterPrevData.status, &gTesterCurData.status, sizeof(gTesterPrevData.status));
 
 			ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_11x18);
-			ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_7x10);
+			ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_6x8);
 
 //			ssd1306_WriteString(trans_str, Font_6x8, White);
 //			snprintf(trans_str, 63, "clicks %d  errors %d\n\r", gTesterCurData.status.pressCount, gTesterCurData.status.errorCount);
@@ -394,6 +408,32 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief CRC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CRC_Init(void)
+{
+
+  /* USER CODE BEGIN CRC_Init 0 */
+
+  /* USER CODE END CRC_Init 0 */
+
+  /* USER CODE BEGIN CRC_Init 1 */
+
+  /* USER CODE END CRC_Init 1 */
+  hcrc.Instance = CRC;
+  if (HAL_CRC_Init(&hcrc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CRC_Init 2 */
+
+  /* USER CODE END CRC_Init 2 */
+
 }
 
 /**
@@ -603,7 +643,7 @@ void setup_label(LABEL *Label, uint8_t x, uint8_t y, char str[]){
 
 }
 
-void ssd1306_WriteUint(LABEL *Label, uint32_t val, FontDef font){
+void ssd1306_WriteUint(LABEL *Label, uint16_t val, FontDef font){
 	snprintf(Label->label, LABEL_MAX_LENGTH, "%d", val);
 	clear_text(Label->start_x, Label->start_y, 6, font);
 	ssd1306_SetCursor(Label->start_x, Label->start_y);

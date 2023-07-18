@@ -35,6 +35,7 @@ extern "C" {
 #include "buttons.h"
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
+#include "FlashPROM.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -77,22 +78,22 @@ typedef enum
 typedef struct
 {
 	union{
-		uint64_t val;
+		uint32_t val;
 		struct
 		{
-			uint32_t pressCount;
+			uint16_t pressCount;
 			uint8_t errorCount;
 		}status;
 	};
 	struct{
-		uint32_t startPressCount;
+		uint16_t startPressCount;
 		uint8_t maxErrorCount;
 	}settings;
 } TESTER_DATA;
 
 typedef struct
 {
-	uint32_t failedPressNumber;
+	uint16_t failedPressNumber;
 	RTC_TimeTypeDef errorTime;
 }ERROR_LOG;
 
