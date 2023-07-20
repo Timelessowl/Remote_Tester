@@ -4,7 +4,7 @@
 
 BUTTONS gButtons;
 
-#define BTN_LONG_PRESS_MAX_COUNT  ((uint8_t)(20))
+#define BTN_LONG_PRESS_MAX_COUNT  ((uint8_t)(15))
 #define BTN_CLICK_MIN_COUNT       (1)
 static uint8_t _btnIsDownCount[BUTTONS_COUNT];
 

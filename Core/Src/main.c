@@ -42,7 +42,7 @@
 #define Y_ICON_BEGIN          		8
 #define DEFAULT_PRESS_COUNTER  		10000
 #define DEFAULT_MAX_ERROR_COUNT     DEFAULT_PRESS_COUNTER / 100
-#define LONG_PRESS_PRESC			50
+#define LONG_PRESS_PRESC			25
 
 #define LED_write(state)            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, !state);
 /* USER CODE END PD */
@@ -158,10 +158,10 @@ int main(void)
 	//	gTesterCurData.status.pressCount = gTesterCurData.settings.startPressCount;
 	gTesterCurData.status.pressCount = REG_CUR_PRESS;
 	gTesterCurData.status.errorCount = REG_CUR_ERR;
-	if (gTesterCurData.status.pressCount != gTesterCurData.settings.startPressCount)
-		testerState = STATE_PAUSE;
+	if (gTesterCurData.status.errorCount > gTesterCurData.settings.maxErrorCount)
+		testerState = STATE_FAILURE;
 	else
-		testerState = STATE_CONFIG;
+		testerState = (gTesterCurData.status.pressCount == gTesterCurData.settings.startPressCount ? STATE_CONFIG : STATE_PAUSE);
 
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, RESET);
 
@@ -242,7 +242,7 @@ int main(void)
 						  UartSendErrorLog(&errorLog[0]);
 						  gTesterCurData.status.errorCount++;
 
-						  if (gTesterCurData.status.errorCount >= gTesterCurData.settings.maxErrorCount){
+						  if (gTesterCurData.status.errorCount > gTesterCurData.settings.maxErrorCount){
 							  LED_write(0);
 							  testerState = STATE_FAILURE;
 							  needToRedrawIcon = 1;
@@ -282,6 +282,7 @@ int main(void)
 	  	  case STATE_FAILURE:
 	  		  if (needToRedrawIcon)
 	  		  {
+	  			memcpy(&gTesterPrevData.status, &gTesterCurData.status, sizeof(gTesterPrevData.status));
 	  			ssd1306_Fill(Black);
 				ssd1306_DrawBitmap(X_ICON_BEGIN, Y_ICON_BEGIN, ALERT_IMG, ALERT_IMG_WIDTH, RESET_IMG_HEIGHT, White);
 				ssd1306_SetCursor(10, 8);
@@ -318,7 +319,7 @@ int main(void)
 			}
 
 			if((LongPressCount++) % LONG_PRESS_PRESC == 0){
-				ssd1306_FillRectangle(10, 8, 10 + (int)(LongPressCount/50) * 15, 16, White);
+				ssd1306_FillRectangle(10, 8, 10 + (int)(LongPressCount/LONG_PRESS_PRESC) * 15, 16, White);
 				ssd1306_UpdateScreen();
 			}
 			if(LongPressCount == (LONG_PRESS_PRESC * 5) + 5){
@@ -336,13 +337,16 @@ int main(void)
 			if(_isreset)
 				_isreset = 0;
 			else{
-				if (gTesterCurData.status.errorCount >= gTesterCurData.settings.maxErrorCount){
+				needToRedrawIcon = 1;
+				if (gTesterCurData.status.errorCount > gTesterCurData.settings.maxErrorCount){
 					testerState = STATE_FAILURE;
-					needToRedrawIcon = 1;
 				}
 				else{
-					testerState = STATE_PRESS;
+					testerState = STATE_PAUSE;
 					DrawLinesAndLabels(&label_clicks, &label_errors);
+					ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_11x18);
+				    ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_6x8);
+
 				}
 			}
 		}
