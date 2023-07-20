@@ -31,12 +31,17 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define REG_SET_PRESS                BKP->DR1
+#define REG_SET_MAXERR               BKP->DR2
+#define REG_CUR_PRESS                BKP->DR3
+#define REG_CUR_ERR                  BKP->DR4
+
 #define VERTICAL_LINE_X             110
 #define HORIZONTAL_LINE_Y           19
 #define X_ICON_BEGIN           		112
 #define Y_ICON_BEGIN          		8
 #define DEFAULT_PRESS_COUNTER  		10000
-#define DEFAULT_MAX_ERROR_COUNT     5
+#define DEFAULT_MAX_ERROR_COUNT     DEFAULT_PRESS_COUNTER / 100
 #define LONG_PRESS_PRESC			50
 
 #define LED_write(state)            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, !state);
@@ -81,6 +86,8 @@ static void MX_USART1_UART_Init(void);
 static void MX_RTC_Init(void);
 static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
+static void BKP_Init(void);
+
 void clear_text(uint8_t x, uint8_t y, uint8_t lenght, FontDef font);
 void clear_icon(void);
 void setup_label(LABEL *Label, uint8_t x, uint8_t y, char str[]);
@@ -89,6 +96,7 @@ void DrawResetScreen(void);
 void DrawLinesAndLabels(LABEL *LabelClick, LABEL *LabelError);
 void CreateErrorLog(ERROR_LOG *er);
 void UartSendErrorLog(ERROR_LOG *er);
+void configRegSave(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -119,21 +127,11 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-	uint8_t test;   //FIXME
+	uint16_t test;   //FIXME
 	uint8_t fingerWaitCounter;
 	uint8_t buttonWaitCounter;
-	myBuf_t wdata[BUFFSIZE];
 	uint8_t needToRedrawIcon = 1;
 
-	res_addr = flash_search_adress(STARTADDR, BUFFSIZE * DATAWIDTH);
-	read_last_data_in_flash(wdata);
-//	gTesterCurData.settings.startPressCount = wdata[0];
-//	gTesterCurData.settings.maxErrorCount = wdata[1];
-	gTesterCurData.settings.maxErrorCount = DEFAULT_MAX_ERROR_COUNT;
-	gTesterCurData.settings.startPressCount = DEFAULT_PRESS_COUNTER;
-
-	gTesterCurData.status.pressCount = gTesterCurData.settings.startPressCount;
-	gTesterCurData.status.errorCount = 0;
 	uint8_t LongPressCount = 0;
 	uint8_t _isreset = 0 ;
 
@@ -148,7 +146,22 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	Buttons_Init();
 	ssd1306_Init();
-	testerState = STATE_CONFIG;
+	BKP_Init();
+
+	gTesterCurData.settings.startPressCount = REG_SET_PRESS;
+	gTesterCurData.settings.maxErrorCount = REG_SET_MAXERR;
+//	gTesterCurData.settings.maxErrorCount = DEFAULT_MAX_ERROR_COUNT;
+//	gTesterCurData.settings.startPressCount = DEFAULT_PRESS_COUNTER;
+	//	configRegSave();
+
+
+	//	gTesterCurData.status.pressCount = gTesterCurData.settings.startPressCount;
+	gTesterCurData.status.pressCount = REG_CUR_PRESS;
+	gTesterCurData.status.errorCount = REG_CUR_ERR;
+	if (gTesterCurData.status.pressCount != gTesterCurData.settings.startPressCount)
+		testerState = STATE_PAUSE;
+	else
+		testerState = STATE_CONFIG;
 
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, RESET);
 
@@ -251,10 +264,12 @@ int main(void)
 	  		  break;
 	  	  case STATE_PAUSE:
 	  		  if(needToRedrawIcon){
-	  			  needToRedrawIcon = 0;
-	  			  clear_icon();
-	  			  ssd1306_DrawBitmap(X_ICON_BEGIN + 3, Y_ICON_BEGIN, PAUSE_IMG, PAUSE_IMG_WIDTH, PAUSE_IMG_HEIGHT, White);
-	  			  ssd1306_UpdateScreen();
+				needToRedrawIcon = 0;
+				DrawLinesAndLabels(&label_clicks, &label_errors);
+				ssd1306_WriteUint(&label_clickCount, gTesterCurData.status.pressCount, Font_11x18);
+				ssd1306_WriteUint(&label_errorCount, gTesterCurData.status.errorCount, Font_6x8);
+				ssd1306_DrawBitmap(X_ICON_BEGIN + 3, Y_ICON_BEGIN, PAUSE_IMG, PAUSE_IMG_WIDTH, PAUSE_IMG_HEIGHT, White);
+				ssd1306_UpdateScreen();
 	  		  }
 	  		  HAL_Delay(1);
 	  		  break;
@@ -290,9 +305,8 @@ int main(void)
 	  	  else if(gButtons.btnOk.click){
 	  		  testerState = STATE_PRESS;
 	  		  needToRedrawIcon = 1;
-	  		  res_addr = flash_search_adress(STARTADDR, BUFFSIZE * DATAWIDTH);
-	  		  myBuf_t wdata[BUFFSIZE] = {gTesterCurData.settings.startPressCount, gTesterCurData.settings.maxErrorCount, 0x0000};
-	  		  write_to_flash(wdata);
+	  		  REG_SET_PRESS = gTesterCurData.settings.startPressCount;
+	  		  REG_SET_MAXERR = gTesterCurData.settings.maxErrorCount;
 	  	  }
 
 		if (gButtons.btnOk.longPress && !_isreset){
@@ -336,10 +350,12 @@ int main(void)
 			HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
 //			snprintf(trans_str, 63, "Time %d:%d:%d\n\r", sTime.Hours, sTime.Minutes, sTime.Seconds);
 //			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
-
+//
 //			HAL_RTC_GetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN);
 //			snprintf(trans_str, 63, "Date %d-%d-20%d\n\n\r", DateToUpdate.Date, DateToUpdate.Month, DateToUpdate.Year);
 //			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+			REG_CUR_PRESS = gTesterCurData.status.pressCount;
+			REG_CUR_ERR = gTesterCurData.status.errorCount;
 
 			memcpy(&gTesterPrevData.status, &gTesterCurData.status, sizeof(gTesterPrevData.status));
 
@@ -493,6 +509,7 @@ static void MX_RTC_Init(void)
   */
   hrtc.Instance = RTC;
   hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
+  hrtc.Init.AsynchPrediv = 0x0001;
   hrtc.Init.OutPut = RTC_OUTPUTSOURCE_NONE;
   if (HAL_RTC_Init(&hrtc) != HAL_OK)
   {
@@ -509,19 +526,19 @@ static void MX_RTC_Init(void)
   sTime.Minutes = 0;
   sTime.Seconds = 0;
 
-  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
-  {
-    Error_Handler();
-  }
+//  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
   DateToUpdate.WeekDay = RTC_WEEKDAY_MONDAY;
   DateToUpdate.Month = RTC_MONTH_JANUARY;
   DateToUpdate.Date = 1;
   DateToUpdate.Year = 0;
 
-  if (HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN) != HAL_OK)
-  {
-    Error_Handler();
-  }
+//  if (HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
   /* USER CODE BEGIN RTC_Init 2 */
 
   /* USER CODE END RTC_Init 2 */
@@ -610,6 +627,10 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+static void BKP_Init(void){
+	RCC->APB1ENR |= RCC_APB1ENR_PWREN | RCC_APB1ENR_BKPEN;
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
           if(huart == &huart1)
@@ -690,6 +711,13 @@ void UartSendErrorLog(ERROR_LOG *er){
 //	snprintf(trans_str, 63, "Time %d:%d:%d\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
 //	HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
 }
+
+//void configRegSave(void){
+//	WRITE_REG(SETTINGS_STARTPRESSCOUNT_REG, gTesterCurData.settings.startPressCount);
+//	WRITE_REG(SETTINGS_MAXERRORS_REG, gTesterCurData.settings.maxErrorCount);
+//}
+
+
 
 /* USER CODE END 4 */
 
