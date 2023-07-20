@@ -128,8 +128,8 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 	uint16_t test;   //FIXME
-	uint8_t fingerWaitCounter;
-	uint8_t buttonWaitCounter;
+	uint32_t fingerWaitCounter;
+	uint32_t buttonWaitCounter;
 	uint8_t needToRedrawIcon = 1;
 
 	uint8_t LongPressCount = 0;
@@ -205,8 +205,8 @@ int main(void)
 	  		if (gTesterCurData.status.pressCount != 0){
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, SET);   //Activating press finger
 				testerState = STATE_WAIT;
-				fingerWaitCounter = 0;
-				buttonWaitCounter = 0 ;
+				fingerWaitCounter = HAL_GetTick();
+				buttonWaitCounter = HAL_GetTick();
 	  		}
 	  		else{
 	  			testerState = STATE_FINISH;
@@ -217,9 +217,11 @@ int main(void)
 	  		  HAL_Delay(10);
 	  //		  break;
 	  	  case STATE_WAIT:
-
+			snprintf(trans_str, 63, "HAL_GetTick() = %d\n\r", HAL_GetTick());
+			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
 	  		  if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_14) != SET){
-			  	  if (fingerWaitCounter++ == 20){
+			  	  if((HAL_GetTick() - fingerWaitCounter) > 1000) // интервал  1сек
+			  	  {
 			  		  //Finger aren't working correctly
 			  		  //Hardware error => stops cycle
 			  		  snprintf(trans_str, 63, "Finger out of order");
@@ -231,7 +233,8 @@ int main(void)
 			  else{
 				  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_13) != SET){  //FIXME: В итогой версии != RESET, т.к. нажатие будет прижимать линию к земле
 					  LED_write(1);
-					  if (buttonWaitCounter++ == 20){
+					  if ((HAL_GetTick() - buttonWaitCounter) > 1200) // интервал  1,2сек
+					  {
 						  //Finger working correctly
 						  //No response from button
 						  //Register error and move on
@@ -513,7 +516,6 @@ static void MX_RTC_Init(void)
   */
   hrtc.Instance = RTC;
   hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
-  hrtc.Init.AsynchPrediv = 0x0001;
   hrtc.Init.OutPut = RTC_OUTPUTSOURCE_NONE;
   if (HAL_RTC_Init(&hrtc) != HAL_OK)
   {
