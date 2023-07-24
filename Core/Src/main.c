@@ -42,7 +42,7 @@
 #define Y_ICON_BEGIN          		8
 #define DEFAULT_PRESS_COUNTER  		10000
 #define DEFAULT_MAX_ERROR_COUNT     DEFAULT_PRESS_COUNTER / 100
-#define LONG_PRESS_PRESC			25
+#define LONG_PRESS_PRESC			15
 
 #define LED_write(state)            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, !state);
 /* USER CODE END PD */
@@ -62,7 +62,6 @@ RTC_HandleTypeDef hrtc;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-uint8_t testEngineState;
 TESTER_STATE testerState;
 TESTER_DATA gTesterCurData;
 TESTER_DATA gTesterPrevData;
@@ -76,6 +75,7 @@ char recieve_str[8] = {0,};
 char request_form[8] = "1";
 
 uint32_t res_addr = 0;
+uint16_t buffsize;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -128,8 +128,8 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 	uint16_t test;   //FIXME
-	uint32_t fingerWaitCounter;
-	uint32_t buttonWaitCounter;
+	uint8_t i;
+	uint32_t waitCounter;
 	uint8_t needToRedrawIcon = 1;
 
 	uint8_t LongPressCount = 0;
@@ -158,6 +158,18 @@ int main(void)
 	//	gTesterCurData.status.pressCount = gTesterCurData.settings.startPressCount;
 	gTesterCurData.status.pressCount = REG_CUR_PRESS;
 	gTesterCurData.status.errorCount = REG_CUR_ERR;
+	if (gTesterCurData.status.errorCount != 0){
+		  buffsize = gTesterCurData.status.errorCount*4 + 1;
+		  res_addr = flash_search_adress(STARTADDR, buffsize * DATAWIDTH);
+		  myBuf_t rdata[buffsize];
+		  read_last_data_in_flash(rdata, buffsize);
+		  for (i = 0; i < gTesterCurData.status.errorCount; i++){
+			  errorLog[i].failedPressNumber = rdata[i * 4];
+			  errorLog[i].errorTime.Hours = rdata[(i * 4) + 1];
+			  errorLog[i].errorTime.Minutes = rdata[(i * 4) + 2];
+			  errorLog[i].errorTime.Seconds = rdata[(i * 4) + 3];
+		  }
+	}
 	if (gTesterCurData.status.errorCount > gTesterCurData.settings.maxErrorCount)
 		testerState = STATE_FAILURE;
 	else
@@ -205,8 +217,7 @@ int main(void)
 	  		if (gTesterCurData.status.pressCount != 0){
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, SET);   //Activating press finger
 				testerState = STATE_WAIT;
-				fingerWaitCounter = HAL_GetTick();
-				buttonWaitCounter = HAL_GetTick();
+				waitCounter = HAL_GetTick();
 	  		}
 	  		else{
 	  			testerState = STATE_FINISH;
@@ -217,10 +228,9 @@ int main(void)
 	  		  HAL_Delay(10);
 	  //		  break;
 	  	  case STATE_WAIT:
-			snprintf(trans_str, 63, "HAL_GetTick() = %d\n\r", HAL_GetTick());
-			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+
 	  		  if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_14) != SET){
-			  	  if((HAL_GetTick() - fingerWaitCounter) > 1000) // интервал  1сек
+			  	  if((HAL_GetTick() - waitCounter) > 1000) // интервал  1сек
 			  	  {
 			  		  //Finger aren't working correctly
 			  		  //Hardware error => stops cycle
@@ -233,7 +243,7 @@ int main(void)
 			  else{
 				  if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_13) != SET){  //FIXME: В итогой версии != RESET, т.к. нажатие будет прижимать линию к земле
 					  LED_write(1);
-					  if ((HAL_GetTick() - buttonWaitCounter) > 1200) // интервал  1,2сек
+					  if ((HAL_GetTick() - waitCounter) > 1200) // интервал  1,2сек
 					  {
 						  //Finger working correctly
 						  //No response from button
@@ -241,9 +251,9 @@ int main(void)
 						  LED_write(0);
 						  snprintf(trans_str, 63, "No response from button\n\r");
 						  HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
-						  CreateErrorLog(&errorLog[gTesterCurData.status.errorCount]);
+						  CreateErrorLog(&errorLog[0]);
 						  UartSendErrorLog(&errorLog[0]);
-						  gTesterCurData.status.errorCount++;
+
 
 						  if (gTesterCurData.status.errorCount > gTesterCurData.settings.maxErrorCount){
 							  LED_write(0);
@@ -292,6 +302,8 @@ int main(void)
 				ssd1306_WriteString("Error", Font_11x18, White);
 				ssd1306_UpdateScreen();
 				needToRedrawIcon = 0;
+
+				waitCounter = HAL_GetTick();
 	  		  }
 	  		  else
 	  			  HAL_Delay(1);
@@ -319,13 +331,19 @@ int main(void)
 			{
 				testerState = STATE_PAUSE;
 				DrawResetScreen();
+				waitCounter = HAL_GetTick();
+				LongPressCount++;
 			}
 
-			if((LongPressCount++) % LONG_PRESS_PRESC == 0){
-				ssd1306_FillRectangle(10, 8, 10 + (int)(LongPressCount/LONG_PRESS_PRESC) * 15, 16, White);
+			if ((HAL_GetTick() - waitCounter) > 500) // интервал  0,5сек
+			{
+				ssd1306_FillRectangle(10, 8, 10 + (int)(LongPressCount * 15), 16, White);
+			    LongPressCount++;
+			    waitCounter = HAL_GetTick();
+//				ssd1306_FillRectangle(10, 8, 10 + (int)(LongPressCount - 1) * 15, 16, White);
 				ssd1306_UpdateScreen();
 			}
-			if(LongPressCount == (LONG_PRESS_PRESC * 5) + 5){
+			if(LongPressCount == 6){
 				testerState = STATE_CONFIG;
 				needToRedrawIcon = 1;
 				gTesterCurData.status.pressCount = gTesterCurData.settings.startPressCount;
@@ -702,13 +720,31 @@ void DrawLinesAndLabels(LABEL *LabelClick, LABEL *LabelError){
 }
 
 void CreateErrorLog(ERROR_LOG *er){
+	  uint8_t i;
+	  er = er + gTesterCurData.status.errorCount;
 	  er->failedPressNumber =  gTesterCurData.status.pressCount;
 	  HAL_RTC_GetTime(&hrtc, &er->errorTime, RTC_FORMAT_BIN);
+
+	  er = er - gTesterCurData.status.errorCount;
+	  gTesterCurData.status.errorCount++;
+
+	  buffsize = gTesterCurData.status.errorCount*4 + 1;
+	  res_addr = flash_search_adress(STARTADDR, buffsize * DATAWIDTH);
+	  myBuf_t wdata[buffsize];
+	  for (i = 0; i < buffsize - 1; i = i+4){
+		  wdata[i] = er->failedPressNumber;
+		  wdata[i + 1] = er->errorTime.Hours;
+		  wdata[i + 2] = er->errorTime.Minutes;
+		  wdata[i + 3] = er->errorTime.Seconds;
+		  wdata[i + 4] = 0x00;
+		  er++;
+	  }
+	  write_to_flash(wdata, buffsize);
 }
 
 void UartSendErrorLog(ERROR_LOG *er){
 	uint8_t i;
-	for (i = 0 ; i < gTesterCurData.status.errorCount + 1; i++){
+	for (i = 0 ; i < gTesterCurData.status.errorCount; i++){
 		snprintf(trans_str, 63, "Error on press %d at %d:%d:%d\n\r", er->failedPressNumber,
 				er->errorTime.Hours, er->errorTime.Minutes, er->errorTime.Seconds);
 		HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);

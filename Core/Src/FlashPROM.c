@@ -66,14 +66,14 @@ uint32_t flash_search_adress(uint32_t address, uint16_t cnt)
 }
 
 //////////////////////// ЗАПИСЬ ДАННЫХ /////////////////////////////
-void write_to_flash(myBuf_t *buff)
+void write_to_flash(myBuf_t *buff, uint16_t buffsize)
 {
-	res_addr = flash_search_adress(res_addr, BUFFSIZE * DATAWIDTH); // ищем свободные ячейки начиная с последнего известного адреса
+	res_addr = flash_search_adress(res_addr,  buffsize * DATAWIDTH); // ищем свободные ячейки начиная с последнего известного адреса
 
 	//////////////////////// ЗАПИСЬ ////////////////////////////
 	HAL_FLASH_Unlock(); // разблокировать флеш
 
-	for(uint16_t i = 0; i < BUFFSIZE; i++)
+	for(uint16_t i = 0; i < buffsize; i++)
 	{
 		if(HAL_FLASH_Program(WIDTHWRITE, res_addr, buff[i]) != HAL_OK)
 		{
@@ -89,18 +89,18 @@ void write_to_flash(myBuf_t *buff)
 	HAL_FLASH_Lock(); // заблокировать флеш
 
 	//////////////////////// проверка записанного (это можно удплить если неохота проверять) ////////////////////////
-	uint32_t crcbuff[BUFFSIZE] = {0,};
+	uint32_t crcbuff[buffsize];
 
-	for(uint16_t i = 0; i < BUFFSIZE; i++) crcbuff[i] = (uint32_t)buff[i]; // в функцию CRC32 нужно подавать 32-х битные значения, поэтому перегоняем 16-ти битный буфер в 32-х битный
+	for(uint16_t i = 0; i < buffsize; i++) crcbuff[i] = (uint32_t)buff[i]; // в функцию CRC32 нужно подавать 32-х битные значения, поэтому перегоняем 16-ти битный буфер в 32-х битный
 
-	uint32_t sum1 = HAL_CRC_Calculate(&hcrc, (uint32_t*)crcbuff, BUFFSIZE); // crc буфера который только что записали
+	uint32_t sum1 = HAL_CRC_Calculate(&hcrc, (uint32_t*)crcbuff, buffsize); // crc буфера который только что записали
 
 	buff[0] = 0;
-	read_last_data_in_flash(buff); // читаем что записали
+	read_last_data_in_flash(buff, buffsize); // читаем что записали
 
-	for(uint16_t i = 0; i < BUFFSIZE; i++) crcbuff[i] = (uint32_t)buff[i];
+	for(uint16_t i = 0; i < buffsize; i++) crcbuff[i] = (uint32_t)buff[i];
 
-	uint32_t sum2 = HAL_CRC_Calculate(&hcrc, (uint32_t*)crcbuff, BUFFSIZE); // crc прочитанного
+	uint32_t sum2 = HAL_CRC_Calculate(&hcrc, (uint32_t*)crcbuff, buffsize); // crc прочитанного
 
 	#if DEBUG
 	char str[64] = {0,};
@@ -123,7 +123,7 @@ void write_to_flash(myBuf_t *buff)
 }
 
 //////////////////////// ЧТЕНИЕ ПОСЛЕДНИХ ДАННЫХ /////////////////////////////
-void read_last_data_in_flash(myBuf_t *buff)
+void read_last_data_in_flash(myBuf_t *buff,  uint16_t buffsize)
 {
 	if(res_addr == STARTADDR)
 	{
@@ -133,9 +133,9 @@ void read_last_data_in_flash(myBuf_t *buff)
 		return;
 	}
 
-	uint32_t adr = res_addr - BUFFSIZE * DATAWIDTH; // сдвигаемся на начало последних данных
+	uint32_t adr = res_addr - buffsize * DATAWIDTH; // сдвигаемся на начало последних данных
 
-	for(uint16_t i = 0; i < BUFFSIZE; i++)
+	for(uint16_t i = 0; i < buffsize; i++)
 	{
 		buff[i] = *(myBuf_t*)adr; // читаем
 		adr = adr + DATAWIDTH;

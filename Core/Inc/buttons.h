@@ -4,11 +4,11 @@
 //#include "stm8s.h"
 #include "stm32f1xx_hal.h"
 #include "stm32f1xx.h"
-#define BUTTONS_COUNT   (1)
+#define BUTTONS_COUNT   (3)
 #define BUTTONS_PORT        GPIOB
 #define BUTTON1_PIN         GPIO_PIN_12
-//#define BUTTON2_PIN         GPIO_PIN_1
-//#define BUTTON3_PIN         GPIO_PIN_14
+#define BUTTON2_PIN         GPIO_PIN_13
+#define BUTTON3_PIN         GPIO_PIN_14
 
 typedef union
 {
@@ -25,8 +25,8 @@ typedef union
    BUTTON_STATE btns[BUTTONS_COUNT];
    struct{
        BUTTON_STATE btnOk;
-       //BUTTON_STATE btnMinus;
-       //BUTTON_STATE btnPlus;
+       BUTTON_STATE btnTestedButton;
+       BUTTON_STATE btnFinger;
    };
 } BUTTONS;
 
