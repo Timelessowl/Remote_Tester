@@ -42,7 +42,6 @@
 #define Y_ICON_BEGIN          		8
 #define DEFAULT_PRESS_COUNTER  		10000
 #define DEFAULT_MAX_ERROR_COUNT     DEFAULT_PRESS_COUNTER / 100
-#define LONG_PRESS_PRESC			15
 
 #define LED_write(state)            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, !state);
 /* USER CODE END PD */
@@ -189,7 +188,9 @@ int main(void)
 	setup_label(&label_errorCount, 42, 22, "not set");
 
 	LED_write(0);
-	HAL_UART_Receive_IT(&huart1, (uint8_t*)&recieve_str, 1);
+//	HAL_UART_Receive_IT(&huart1, (uint8_t*)&recieve_str, 1);
+	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
+	HAL_RTC_GetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -250,6 +251,15 @@ int main(void)
 						  //Register error and move on
 						  LED_write(0);
 						  snprintf(trans_str, 63, "No response from button\n\r");
+						  //testing purpose only
+						  HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
+						   snprintf(trans_str, 63, "Time %d:%d:%d\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+						   HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+
+						   HAL_RTC_GetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN);
+						   snprintf(trans_str, 63, "Date %d-%d-20%d\n", DateToUpdate.Date, DateToUpdate.Month, DateToUpdate.Year);
+						   HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+						  //end of test
 						  HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
 						  CreateErrorLog(&errorLog[0]);
 						  UartSendErrorLog(&errorLog[0]);
@@ -373,12 +383,13 @@ int main(void)
 		}
 		else if(gTesterCurData.val != gTesterPrevData.val){
 			HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN); // RTC_FORMAT_BIN , RTC_FORMAT_BCD
-//			snprintf(trans_str, 63, "Time %d:%d:%d\n\r", sTime.Hours, sTime.Minutes, sTime.Seconds);
-//			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
-//
-//			HAL_RTC_GetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN);
-//			snprintf(trans_str, 63, "Date %d-%d-20%d\n\n\r", DateToUpdate.Date, DateToUpdate.Month, DateToUpdate.Year);
-//			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+			HAL_RTC_GetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN);
+			snprintf(trans_str, 63, "Time %d:%d:%d\n\r", sTime.Hours, sTime.Minutes, sTime.Seconds);
+			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
+
+			HAL_RTC_GetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN);
+			snprintf(trans_str, 63, "Date %d-%d-20%d\n\n\r", DateToUpdate.Date, DateToUpdate.Month, DateToUpdate.Year);
+			HAL_UART_Transmit(&huart1, (uint8_t*)trans_str, strlen(trans_str), 1000);
 			REG_CUR_PRESS = gTesterCurData.status.pressCount;
 			REG_CUR_ERR = gTesterCurData.status.errorCount;
 
@@ -546,18 +557,18 @@ static void MX_RTC_Init(void)
 
   /** Initialize RTC and set the Time and Date
   */
-  sTime.Hours = 0;
-  sTime.Minutes = 0;
+  sTime.Hours = 18;
+  sTime.Minutes = 30;
   sTime.Seconds = 0;
 
-//  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
-//  {
-//    Error_Handler();
-//  }
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
+  {
+    Error_Handler();
+  }
   DateToUpdate.WeekDay = RTC_WEEKDAY_MONDAY;
-  DateToUpdate.Month = RTC_MONTH_JANUARY;
-  DateToUpdate.Date = 1;
-  DateToUpdate.Year = 0;
+  DateToUpdate.Month = RTC_MONTH_JULY;
+  DateToUpdate.Date = 31;
+  DateToUpdate.Year = 23;
 
 //  if (HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN) != HAL_OK)
 //  {
