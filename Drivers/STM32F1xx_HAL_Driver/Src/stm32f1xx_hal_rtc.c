@@ -728,7 +728,6 @@ HAL_StatusTypeDef HAL_RTC_SetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTim
     counter_time = (uint32_t)(((uint32_t)sTime->Hours * 3600U) + \
                               ((uint32_t)sTime->Minutes * 60U) + \
                               ((uint32_t)sTime->Seconds));
-    counter_time += 74649600U;
   }
   else
   {
@@ -791,7 +790,7 @@ HAL_StatusTypeDef HAL_RTC_SetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTim
 }
 
 /**
-  * @brief  Sets RTC current time and date. only works with bin format.
+  * @brief  Sets RTC current date in seconds since 01.01.2000
   * @param  hrtc   pointer to a RTC_HandleTypeDef structure that contains
   *                the configuration information for RTC.
   * @param  sTime: Pointer to Time structure
@@ -801,153 +800,100 @@ HAL_StatusTypeDef HAL_RTC_SetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTim
   *            @arg RTC_FORMAT_BCD: BCD data format
   * @retval HAL status
   */
-HAL_StatusTypeDef HAL_RTC_SetTimeAndDate(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, RTC_DateTypeDef *sDate, uint32_t Format)
+HAL_StatusTypeDef HAL_RTC_SetDateToRegister(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t Format)
 {
-  uint32_t counter_time = 0U, counter_alarm = 0U;
-  uint32_t year = 0U, month = 0U, day = 0U;
-  uint32_t DaysInDate = 0U;
+	uint32_t year = 0U, month = 1U, day = 1U;  //Date calculation starts from 01.01.2000
+	uint32_t counter_time = 0U;
 
-  /* Check input parameters */
-  if ((hrtc == NULL) || (sTime == NULL))
-  {
-    return HAL_ERROR;
-  }
+	  /* Check input parameters */
+	  if ((hrtc == NULL) || (sDate == NULL))
+	  {
+	    return HAL_ERROR;
+	  }
 
-  /* Check the parameters */
-  assert_param(IS_RTC_FORMAT(Format));
+	  /* Check the parameters */
+	  assert_param(IS_RTC_FORMAT(Format));
 
-  /* Process Locked */
-  __HAL_LOCK(hrtc);
 
-  hrtc->State = HAL_RTC_STATE_BUSY;
+	  /* Process Locked */
+	  __HAL_LOCK(hrtc);
 
-  if (Format == RTC_FORMAT_BIN)
-  {
-//	  while (day != sDate->Date || month != sDate->Month || year != sDate->Year){
-//
-//		    if ((month == 1U) || (month == 3U) || (month == 5U) || (month == 7U) || \
-//		        (month == 8U) || (month == 10U) || (month == 12U))
-//		    {
-//		      if (day < 31U)
-//		      {
-//		        day++;
-//		      }
-//		      /* Date structure member: day = 31 */
-//		      else
-//		      {
-//		        if (month != 12U)
-//		        {
-//		          month++;
-//		          day = 1U;
-//		        }
-//		        /* Date structure member: day = 31 & month =12 */
-//		        else
-//		        {
-//		          month = 1U;
-//		          day = 1U;
-//		          year++;
-//		        }
-//		      }
-//		    }
-//		    else if ((month == 4U) || (month == 6U) || (month == 9U) || (month == 11U))
-//		    {
-//		      if (day < 30U)
-//		      {
-//		        day++;
-//		      }
-//		      /* Date structure member: day = 30 */
-//		      else
-//		      {
-//		        month++;
-//		        day = 1U;
-//		      }
-//		    }
-//		    else if (month == 2U)
-//		    {
-//		      if (day < 28U)
-//		      {
-//		        day++;
-//		      }
-//		      else if (day == 28U)
-//		      {
-//		        /* Leap year */
-//		        if (RTC_IsLeapYear(year))
-//		        {
-//		          day++;
-//		        }
-//		        else
-//		        {
-//		          month++;
-//		          day = 1U;
-//		        }
-//		      }
-//		      else if (day == 29U)
-//		      {
-//		        month++;
-//		        day = 1U;
-//		      }
-//		    }
-//	  }
-    assert_param(IS_RTC_HOUR24(sTime->Hours));
-    assert_param(IS_RTC_MINUTES(sTime->Minutes));
-    assert_param(IS_RTC_SECONDS(sTime->Seconds));
+	  hrtc->State = HAL_RTC_STATE_BUSY;
+	  /* Read the time counter*/
+	  counter_time = RTC_ReadTimeCounter(hrtc);
 
-    counter_time = (uint32_t)(((uint32_t)sTime->Hours * 3600U) + \
-                              ((uint32_t)sTime->Minutes * 60U) + \
-                              ((uint32_t)sTime->Seconds));
-  }
-  else
-  {
-	  return HAL_ERROR;
-  }
+	  while (day != sDate->Date || month != sDate->Month || year != sDate->Year)
+	  {
+		    counter_time += 86400;
+		    if ((month == 1U) || (month == 3U) || (month == 5U) || (month == 7U) || \
+		        (month == 8U) || (month == 10U) || (month == 12U))
+		    {
+		      if (day < 31U)
+		      {
+		        day++;
+		      }
+		      /* Date structure member: day = 31 */
+		      else
+		      {
+		        if (month != 12U)
+		        {
+		          month++;
+		          day = 1U;
+		        }
+		        /* Date structure member: day = 31 & month =12 */
+		        else
+		        {
+		          month = 1U;
+		          day = 1U;
+		          year++;
+		        }
+		      }
+		    }
+		    else if ((month == 4U) || (month == 6U) || (month == 9U) || (month == 11U))
+		    {
+		      if (day < 30U)
+		      {
+		        day++;
+		      }
+		      /* Date structure member: day = 30 */
+		      else
+		      {
+		        month++;
+		        day = 1U;
+		      }
+		    }
+		    else if (month == 2U)
+		    {
+		      if (day < 28U)
+		      {
+		        day++;
+		      }
+		      else if (day == 28U)
+		      {
+		        /* Leap year */
+		        if (RTC_IsLeapYear(year))
+		        {
+		          day++;
+		        }
+		        else
+		        {
+		          month++;
+		          day = 1U;
+		        }
+		      }
+		      else if (day == 29U)
+		      {
+		        month++;
+		        day = 1U;
+		      }
+		    }
+	  }
+	    /* Write date and time counter in RTC registers */
+	    if (RTC_WriteTimeCounter(hrtc, counter_time) != HAL_OK)
+	    {
+	      return HAL_ERROR;
+	    }
 
-  /* Write time counter in RTC registers */
-  if (RTC_WriteTimeCounter(hrtc, counter_time) != HAL_OK)
-  {
-    /* Set RTC state */
-    hrtc->State = HAL_RTC_STATE_ERROR;
-
-    /* Process Unlocked */
-    __HAL_UNLOCK(hrtc);
-
-    return HAL_ERROR;
-  }
-  else
-  {
-    /* Clear Second and overflow flags */
-    CLEAR_BIT(hrtc->Instance->CRL, (RTC_FLAG_SEC | RTC_FLAG_OW));
-
-    /* Read current Alarm counter in RTC registers */
-    counter_alarm = RTC_ReadAlarmCounter(hrtc);
-
-    /* Set again alarm to match with new time if enabled */
-    if (counter_alarm != RTC_ALARM_RESETVALUE)
-    {
-      if (counter_alarm < counter_time)
-      {
-        /* Add 1 day to alarm counter*/
-        counter_alarm += (uint32_t)(24U * 3600U);
-
-        /* Write new Alarm counter in RTC registers */
-        if (RTC_WriteAlarmCounter(hrtc, counter_alarm) != HAL_OK)
-        {
-          /* Set RTC state */
-          hrtc->State = HAL_RTC_STATE_ERROR;
-
-          /* Process Unlocked */
-          __HAL_UNLOCK(hrtc);
-
-          return HAL_ERROR;
-        }
-      }
-    }
-
-    hrtc->State = HAL_RTC_STATE_READY;
-
-    __HAL_UNLOCK(hrtc);
-
-    return HAL_OK;
-  }
 }
 
 /**
