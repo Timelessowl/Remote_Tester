@@ -894,6 +894,106 @@ HAL_StatusTypeDef HAL_RTC_SetDateToRegister(RTC_HandleTypeDef *hrtc, RTC_DateTyp
 	      return HAL_ERROR;
 	    }
 
+	    hrtc->State = HAL_RTC_STATE_READY ;
+	    /* Process Unlocked */
+	    __HAL_UNLOCK(hrtc);
+	    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_RTC_GetDateFromRegister(RTC_HandleTypeDef *hrtc, uint32_t *dataCounter)
+{
+	uint32_t counter_time = 0U, days_elapsed = 0U, hours = 0U;
+	uint32_t year = 0U, month = 1U, day = 1U;  //Date calculation starts from 01.01.2000
+	  uint32_t loop = 0U;
+
+	  /* Read the time counter*/
+	  counter_time = RTC_ReadTimeCounter(hrtc);
+
+	  /* Fill the structure fields with the read parameters */
+	  hours = counter_time / 3600U;
+
+	  if (hours >= 24U)
+	  {
+	    /* Get number of days elapsed from last calculation */
+	    days_elapsed = (hours / 24U);
+	    *dataCounter = days_elapsed * 86400U;
+
+	    /* Update date */
+	    for (loop = 0U; loop < days_elapsed; loop++)
+	    {
+	      if ((month == 1U) || (month == 3U) || (month == 5U) || (month == 7U) || \
+	          (month == 8U) || (month == 10U) || (month == 12U))
+	      {
+	        if (day < 31U)
+	        {
+	          day++;
+	        }
+	        /* Date structure member: day = 31 */
+	        else
+	        {
+	          if (month != 12U)
+	          {
+	            month++;
+	            day = 1U;
+	          }
+	          /* Date structure member: day = 31 & month =12 */
+	          else
+	          {
+	            month = 1U;
+	            day = 1U;
+	            year++;
+	          }
+	        }
+	      }
+	      else if ((month == 4U) || (month == 6U) || (month == 9U) || (month == 11U))
+	      {
+	        if (day < 30U)
+	        {
+	          day++;
+	        }
+	        /* Date structure member: day = 30 */
+	        else
+	        {
+	          month++;
+	          day = 1U;
+	        }
+	      }
+	      else if (month == 2U)
+	      {
+	        if (day < 28U)
+	        {
+	          day++;
+	        }
+	        else if (day == 28U)
+	        {
+	          /* Leap year */
+	          if (RTC_IsLeapYear(year))
+	          {
+	            day++;
+	          }
+	          else
+	          {
+	            month++;
+	            day = 1U;
+	          }
+	        }
+	        else if (day == 29U)
+	        {
+	          month++;
+	          day = 1U;
+	        }
+	      }
+	    }
+
+	    /* Update year */
+	    hrtc->DateToUpdate.Year = year;
+
+	    /* Update day and month */
+	    hrtc->DateToUpdate.Month = month;
+	    hrtc->DateToUpdate.Date = day;
+	  }
+
+	  return HAL_OK;
 }
 
 /**
@@ -907,7 +1007,7 @@ HAL_StatusTypeDef HAL_RTC_SetDateToRegister(RTC_HandleTypeDef *hrtc, RTC_DateTyp
   *            @arg RTC_FORMAT_BCD: BCD data format
   * @retval HAL status
   */
-HAL_StatusTypeDef HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t Format)
+HAL_StatusTypeDef HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t dataCounter, uint32_t Format)
 {
   uint32_t counter_time = 0U, counter_alarm = 0U, days_elapsed = 0U, hours = 0U;
 
@@ -929,6 +1029,8 @@ HAL_StatusTypeDef HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTim
   /* Read the time counter*/
   counter_time = RTC_ReadTimeCounter(hrtc);
 
+  if (dataCounter != 0)
+	  counter_time -= dataCounter;
   /* Fill the structure fields with the read parameters */
   hours = counter_time / 3600U;
   sTime->Minutes  = (uint8_t)((counter_time % 3600U) / 60U);
@@ -961,10 +1063,10 @@ HAL_StatusTypeDef HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTim
 //    counter_time -= (days_elapsed * 24U * 3600U);
 
     /* Write time counter in RTC registers */
-    if (RTC_WriteTimeCounter(hrtc, counter_time) != HAL_OK)
-    {
-      return HAL_ERROR;
-    }
+//    if (RTC_WriteTimeCounter(hrtc, counter_time) != HAL_OK)
+//    {
+//      return HAL_ERROR;
+//    }
 
     /* Set updated alarm to be set */
     if (counter_alarm != RTC_ALARM_RESETVALUE)
@@ -1133,7 +1235,7 @@ HAL_StatusTypeDef HAL_RTC_SetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDat
   *            @arg RTC_FORMAT_BCD:  BCD data format
   * @retval HAL status
   */
-HAL_StatusTypeDef HAL_RTC_GetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t Format)
+HAL_StatusTypeDef HAL_RTC_GetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t dataCounter, uint32_t Format)
 {
   RTC_TimeTypeDef stime = {0U};
 
@@ -1147,7 +1249,7 @@ HAL_StatusTypeDef HAL_RTC_GetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDat
   assert_param(IS_RTC_FORMAT(Format));
 
   /* Call HAL_RTC_GetTime function to update date if counter higher than 24 hours */
-  if (HAL_RTC_GetTime(hrtc, &stime, RTC_FORMAT_BIN) != HAL_OK)
+  if (HAL_RTC_GetTime(hrtc, &stime, dataCounter, RTC_FORMAT_BIN) != HAL_OK)
   {
     return HAL_ERROR;
   }
@@ -1219,10 +1321,10 @@ HAL_StatusTypeDef HAL_RTC_SetAlarm(RTC_HandleTypeDef *hrtc, RTC_AlarmTypeDef *sA
   hrtc->State = HAL_RTC_STATE_BUSY;
 
   /* Call HAL_RTC_GetTime function to update date if counter higher than 24 hours */
-  if (HAL_RTC_GetTime(hrtc, &stime, RTC_FORMAT_BIN) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
+//  if (HAL_RTC_GetTime(hrtc, &stime, RTC_FORMAT_BIN) != HAL_OK)
+//  {
+//    return HAL_ERROR;
+//  }
 
   /* Convert time in seconds */
   counter_time = (uint32_t)(((uint32_t)stime.Hours * 3600U) + \
@@ -1311,10 +1413,10 @@ HAL_StatusTypeDef HAL_RTC_SetAlarm_IT(RTC_HandleTypeDef *hrtc, RTC_AlarmTypeDef 
   hrtc->State = HAL_RTC_STATE_BUSY;
 
   /* Call HAL_RTC_GetTime function to update date if counter higher than 24 hours */
-  if (HAL_RTC_GetTime(hrtc, &stime, RTC_FORMAT_BIN) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
+//  if (HAL_RTC_GetTime(hrtc, &stime, RTC_FORMAT_BIN) != HAL_OK)
+//  {
+//    return HAL_ERROR;
+//  }
 
   /* Convert time in seconds */
   counter_time = (uint32_t)(((uint32_t)stime.Hours * 3600U) + \
@@ -1892,15 +1994,15 @@ static uint8_t RTC_Bcd2ToByte(uint8_t Value)
   */
 static void RTC_DateUpdate(RTC_HandleTypeDef *hrtc, uint32_t DayElapsed)
 {
-  uint32_t year = 0U, month = 1U, day = 1U;  //Date calculation starts from 01.01.2000
+  uint32_t year = 0U, month = 0U, day = 0U;  //Date calculation starts from 01.01.2000
   uint32_t loop = 0U;
 
   /* Get the current year*/
-//  year = hrtc->DateToUpdate.Year;
+  year = hrtc->DateToUpdate.Year;
 
   /* Get the current month and day */
-//  month = hrtc->DateToUpdate.Month;
-//  day = hrtc->DateToUpdate.Date;
+  month = hrtc->DateToUpdate.Month;
+  day = hrtc->DateToUpdate.Date;
 
   for (loop = 0U; loop < DayElapsed; loop++)
   {
